@@ -360,7 +360,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") rightPressed = true;
 
   // ⭐ 空白鍵發球
-  if (e.code === "P" && waitingForServe && !countdownActive) {
+  if (e.code === "p" && waitingForServe && !countdownActive) {
     startBGM();
 
     for (const ball of balls) {
