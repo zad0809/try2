@@ -360,7 +360,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") rightPressed = true;
 
   // ⭐ 空白鍵發球
-  if (e.code === "Space" && waitingForServe && !countdownActive) {
+  if (e.code === "P" && waitingForServe && !countdownActive) {
     startBGM();
 
     for (const ball of balls) {
@@ -466,7 +466,7 @@ function drawText() {
     ctx.font = "20px Arial";
     ctx.fillStyle = "#facc15";
     ctx.fillText(
-      "Press SPACE to Serve",
+      "Press P to Serve",
       canvas.width / 2 - 110,
       canvas.height - 10
     );
