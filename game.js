@@ -3,8 +3,17 @@ const ctx = canvas.getContext("2d");
 
 // ==================== 遊戲狀態 ====================
 let gameRunning = true;
+
 let level = 1;
 const MAX_LEVEL = 5;
+
+let score = 0;
+let lives = 3;
+
+// 倒數系統
+let countdownActive = false;
+let countdownValue = 0;
+let countdownStartTime = 0;
 
 // ==================== Paddle ====================
 const paddle = {
@@ -12,16 +21,17 @@ const paddle = {
   height: 15,
   x: canvas.width / 2 - 60,
   y: canvas.height - 40,
+
   speed: 0,
-  maxSpeed: 20,
-  accel: 2,
-  friction: 0.8
+  maxSpeed: 16,    // 加快
+  accel: 1.2,      // 加速更快
+  friction: 0.90   // 比較滑順
 };
 
 let leftPressed = false;
 let rightPressed = false;
 
-// ==================== Ball（支援多顆球） ====================
+// ==================== Ball（多顆球支援） ====================
 let balls = [];
 
 function normalizeBallSpeed(ball) {
@@ -46,6 +56,15 @@ function createBall(x, y, dx, dy, speed) {
   return ball;
 }
 
+function resetBalls() {
+  balls = [];
+
+  const baseSpeed = 3.0;
+  const speed = baseSpeed + (level - 1) * 0.3;
+
+  balls.push(createBall(canvas.width / 2, canvas.height - 60, 3, -3, speed));
+}
+
 // ==================== Bricks ====================
 const brickSetting = {
   rows: 5,
@@ -58,10 +77,28 @@ const brickSetting = {
 };
 
 let bricks = [];
-let score = 0;
-let lives = 3;
 
-// ==================== 道具 ====================
+function updateBrickOffset() {
+  const totalWidth =
+    brickSetting.cols * brickSetting.width +
+    (brickSetting.cols - 1) * brickSetting.padding;
+
+  brickSetting.offsetLeft = (canvas.width - totalWidth) / 2;
+}
+
+function createBricks() {
+  updateBrickOffset();
+  bricks = [];
+
+  for (let r = 0; r < brickSetting.rows; r++) {
+    bricks[r] = [];
+    for (let c = 0; c < brickSetting.cols; c++) {
+      bricks[r][c] = { x: 0, y: 0, status: 1 };
+    }
+  }
+}
+
+// ==================== 道具系統 ====================
 let powerUps = [];
 
 const POWER_TYPES = {
@@ -84,42 +121,163 @@ function createPowerUp(x, y, type) {
   };
 }
 
-// ==================== 初始化磚塊 ====================
-function updateBrickOffset() {
-  const totalWidth =
-    brickSetting.cols * brickSetting.width +
-    (brickSetting.cols - 1) * brickSetting.padding;
+function spawnPowerUp(x, y) {
+  if (Math.random() > POWER_DROP_RATE) return;
 
-  brickSetting.offsetLeft = (canvas.width - totalWidth) / 2;
+  const types = [
+    POWER_TYPES.MULTIBALL,
+    POWER_TYPES.EXPAND,
+    POWER_TYPES.LIFE
+  ];
+
+  const randomType = types[Math.floor(Math.random() * types.length)];
+
+  powerUps.push(createPowerUp(x, y, randomType));
 }
 
-function createBricks() {
-  updateBrickOffset();
-  bricks = [];
+function applyPowerUp(type) {
+  if (type === POWER_TYPES.MULTIBALL) {
+    const newBalls = [];
 
-  for (let r = 0; r < brickSetting.rows; r++) {
-    bricks[r] = [];
-    for (let c = 0; c < brickSetting.cols; c++) {
-      bricks[r][c] = { x: 0, y: 0, status: 1 };
+    for (const ball of balls) {
+      newBalls.push(createBall(ball.x, ball.y, -ball.dx, ball.dy, ball.speed));
     }
+
+    balls = balls.concat(newBalls);
+  }
+
+  if (type === POWER_TYPES.EXPAND) {
+    paddle.width += 40;
+    if (paddle.width > 240) paddle.width = 240;
+  }
+
+  if (type === POWER_TYPES.LIFE) {
+    lives++;
   }
 }
 
-// ==================== 關卡設定 ====================
+function updatePowerUps() {
+  for (const p of powerUps) {
+    if (!p.active) continue;
+
+    p.y += p.speed;
+
+    // 撞到 paddle
+    if (
+      p.x < paddle.x + paddle.width &&
+      p.x + p.width > paddle.x &&
+      p.y < paddle.y + paddle.height &&
+      p.y + p.height > paddle.y
+    ) {
+      p.active = false;
+      applyPowerUp(p.type);
+    }
+
+    // 掉出畫面
+    if (p.y > canvas.height) {
+      p.active = false;
+    }
+  }
+
+  powerUps = powerUps.filter(p => p.active);
+}
+
+// ==================== 關卡系統 ====================
 function setupLevel(lv) {
-  // 每關磚塊增加
-  brickSetting.rows = 4 + lv; // lv1=5排, lv2=6排...
+  brickSetting.rows = 4 + lv;
   if (brickSetting.rows > 10) brickSetting.rows = 10;
 
   createBricks();
   resetBalls();
   powerUps = [];
+
+  paddle.width = 120;
+  paddle.x = canvas.width / 2 - paddle.width / 2;
+  paddle.speed = 0;
 }
 
-// ==================== 初始化遊戲 ====================
-setupLevel(level);
+function isLevelCleared() {
+  for (let r = 0; r < brickSetting.rows; r++) {
+    for (let c = 0; c < brickSetting.cols; c++) {
+      if (bricks[r][c].status === 1) return false;
+    }
+  }
+  return true;
+}
 
-// ==================== 畫面繪製 ====================
+function nextLevel() {
+  if (level >= MAX_LEVEL) {
+    gameRunning = false;
+    return;
+  }
+
+  level++;
+  setupLevel(level);
+  startCountdown();
+}
+
+// ==================== 倒數系統 ====================
+function startCountdown() {
+  countdownActive = true;
+  countdownValue = 3;
+  countdownStartTime = Date.now();
+}
+
+function updateCountdown() {
+  const elapsed = Math.floor((Date.now() - countdownStartTime) / 1000);
+  countdownValue = 3 - elapsed;
+
+  if (countdownValue < 0) {
+    countdownActive = false;
+  }
+}
+
+function drawCountdown() {
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = "50px Arial";
+  ctx.fillStyle = "#38bdf8";
+  ctx.fillText(
+    "LEVEL " + level,
+    canvas.width / 2 - 110,
+    canvas.height / 2 - 60
+  );
+
+  ctx.font = "80px Arial";
+  ctx.fillStyle = "white";
+
+  if (countdownValue > 0) {
+    ctx.fillText(
+      countdownValue,
+      canvas.width / 2 - 20,
+      canvas.height / 2 + 50
+    );
+  } else {
+    ctx.fillText(
+      "GO!",
+      canvas.width / 2 - 70,
+      canvas.height / 2 + 50
+    );
+  }
+}
+
+// ==================== 控制 ====================
+document.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") leftPressed = true;
+  if (e.key === "ArrowRight") rightPressed = true;
+
+  if (e.key === "Enter" && !gameRunning) {
+    restartGame();
+  }
+});
+
+document.addEventListener("keyup", (e) => {
+  if (e.key === "ArrowLeft") leftPressed = false;
+  if (e.key === "ArrowRight") rightPressed = false;
+});
+
+// ==================== 繪圖 ====================
 function drawPaddle() {
   ctx.beginPath();
   ctx.rect(paddle.x, paddle.y, paddle.width, paddle.height);
@@ -145,6 +303,7 @@ function drawBricks() {
         const brickX =
           c * (brickSetting.width + brickSetting.padding) +
           brickSetting.offsetLeft;
+
         const brickY =
           r * (brickSetting.height + brickSetting.padding) +
           brickSetting.offsetTop;
@@ -159,6 +318,32 @@ function drawBricks() {
         ctx.closePath();
       }
     }
+  }
+}
+
+function drawPowerUps() {
+  for (const p of powerUps) {
+    if (!p.active) continue;
+
+    ctx.beginPath();
+    ctx.rect(p.x, p.y, p.width, p.height);
+
+    if (p.type === POWER_TYPES.MULTIBALL) ctx.fillStyle = "#f97316";
+    if (p.type === POWER_TYPES.EXPAND) ctx.fillStyle = "#a855f7";
+    if (p.type === POWER_TYPES.LIFE) ctx.fillStyle = "#ef4444";
+
+    ctx.fill();
+    ctx.closePath();
+
+    ctx.font = "14px Arial";
+    ctx.fillStyle = "white";
+
+    let label = "";
+    if (p.type === POWER_TYPES.MULTIBALL) label = "2x";
+    if (p.type === POWER_TYPES.EXPAND) label = "++";
+    if (p.type === POWER_TYPES.LIFE) label = "+1";
+
+    ctx.fillText(label, p.x + 6, p.y + 19);
   }
 }
 
@@ -198,167 +383,7 @@ function drawWin() {
   );
 }
 
-function drawNextLevel() {
-  ctx.font = "40px Arial";
-  ctx.fillStyle = "#38bdf8";
-  ctx.fillText(
-    "LEVEL " + level,
-    canvas.width / 2 - 90,
-    canvas.height / 2
-  );
-
-  ctx.font = "20px Arial";
-  ctx.fillStyle = "white";
-  ctx.fillText(
-    "Get Ready...",
-    canvas.width / 2 - 60,
-    canvas.height / 2 + 40
-  );
-}
-
-// ==================== 畫道具 ====================
-function drawPowerUps() {
-  for (const p of powerUps) {
-    if (!p.active) continue;
-
-    ctx.beginPath();
-    ctx.rect(p.x, p.y, p.width, p.height);
-
-    if (p.type === POWER_TYPES.MULTIBALL) ctx.fillStyle = "#f97316";
-    if (p.type === POWER_TYPES.EXPAND) ctx.fillStyle = "#a855f7";
-    if (p.type === POWER_TYPES.LIFE) ctx.fillStyle = "#ef4444";
-
-    ctx.fill();
-    ctx.closePath();
-
-    ctx.font = "14px Arial";
-    ctx.fillStyle = "white";
-
-    let label = "";
-    if (p.type === POWER_TYPES.MULTIBALL) label = "2x";
-    if (p.type === POWER_TYPES.EXPAND) label = "++";
-    if (p.type === POWER_TYPES.LIFE) label = "+1";
-
-    ctx.fillText(label, p.x + 6, p.y + 19);
-  }
-}
-
-// ==================== 控制 ====================
-document.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowLeft") leftPressed = true;
-  if (e.key === "ArrowRight") rightPressed = true;
-
-  if (e.key === "Enter" && !gameRunning) {
-    restartGame();
-  }
-});
-
-document.addEventListener("keyup", (e) => {
-  if (e.key === "ArrowLeft") leftPressed = false;
-  if (e.key === "ArrowRight") rightPressed = false;
-});
-
-// ==================== 道具掉落 ====================
-function spawnPowerUp(x, y) {
-  if (Math.random() > POWER_DROP_RATE) return;
-
-  const types = [
-    POWER_TYPES.MULTIBALL,
-    POWER_TYPES.EXPAND,
-    POWER_TYPES.LIFE
-  ];
-
-  const randomType = types[Math.floor(Math.random() * types.length)];
-  powerUps.push(createPowerUp(x, y, randomType));
-}
-
-// ==================== 道具效果 ====================
-function applyPowerUp(type) {
-  if (type === POWER_TYPES.MULTIBALL) {
-    const newBalls = [];
-    for (const ball of balls) {
-      newBalls.push(
-        createBall(ball.x, ball.y, -ball.dx, ball.dy, ball.speed)
-      );
-    }
-    balls = balls.concat(newBalls);
-  }
-
-  if (type === POWER_TYPES.EXPAND) {
-    paddle.width += 40;
-    if (paddle.width > 220) paddle.width = 220;
-  }
-
-  if (type === POWER_TYPES.LIFE) {
-    lives++;
-  }
-}
-
-// ==================== 碰撞偵測 ====================
-function collisionDetection() {
-  for (const ball of balls) {
-    for (let r = 0; r < brickSetting.rows; r++) {
-      for (let c = 0; c < brickSetting.cols; c++) {
-        const brick = bricks[r][c];
-
-        if (brick.status === 1) {
-          if (
-            ball.x > brick.x &&
-            ball.x < brick.x + brickSetting.width &&
-            ball.y > brick.y &&
-            ball.y < brick.y + brickSetting.height
-          ) {
-            ball.dy *= -1;
-            normalizeBallSpeed(ball);
-
-            brick.status = 0;
-            score++;
-
-            spawnPowerUp(
-              brick.x + brickSetting.width / 2,
-              brick.y + brickSetting.height / 2
-            );
-
-            const totalBricks = brickSetting.rows * brickSetting.cols;
-            const bricksDestroyed = score % totalBricks;
-
-            // 如果這關清完
-            if (bricksDestroyed === 0) {
-              nextLevel();
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-// ==================== 道具更新 ====================
-function updatePowerUps() {
-  for (const p of powerUps) {
-    if (!p.active) continue;
-
-    p.y += p.speed;
-
-    if (
-      p.x < paddle.x + paddle.width &&
-      p.x + p.width > paddle.x &&
-      p.y < paddle.y + paddle.height &&
-      p.y + p.height > paddle.y
-    ) {
-      p.active = false;
-      applyPowerUp(p.type);
-    }
-
-    if (p.y > canvas.height) {
-      p.active = false;
-    }
-  }
-
-  powerUps = powerUps.filter(p => p.active);
-}
-
-// ==================== Paddle 更新 ====================
+// ==================== 更新 ====================
 function updatePaddle() {
   if (leftPressed) paddle.speed -= paddle.accel;
   if (rightPressed) paddle.speed += paddle.accel;
@@ -381,28 +406,29 @@ function updatePaddle() {
   }
 }
 
-// ==================== Ball 更新 ====================
 function updateBalls() {
   for (const ball of balls) {
     ball.x += ball.dx;
     ball.y += ball.dy;
 
+    // 撞左右牆
     if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
       ball.dx *= -1;
       normalizeBallSpeed(ball);
     }
 
+    // 撞上牆
     if (ball.y - ball.radius < 0) {
       ball.dy *= -1;
       normalizeBallSpeed(ball);
     }
 
-    // paddle碰撞
+    // 撞 paddle
     if (
-      ball.x > paddle.x &&
-      ball.x < paddle.x + paddle.width &&
+      ball.x + ball.radius > paddle.x &&
+      ball.x - ball.radius < paddle.x + paddle.width &&
       ball.y + ball.radius > paddle.y &&
-      ball.y + ball.radius < paddle.y + paddle.height + 10
+      ball.y - ball.radius < paddle.y + paddle.height
     ) {
       ball.dy = -Math.abs(ball.dy);
 
@@ -413,8 +439,10 @@ function updateBalls() {
     }
   }
 
+  // 移除掉到底的球
   balls = balls.filter(ball => ball.y - ball.radius <= canvas.height);
 
+  // 全部球掉了才扣命
   if (balls.length === 0) {
     lives--;
 
@@ -422,11 +450,46 @@ function updateBalls() {
       gameRunning = false;
     } else {
       resetBalls();
+      startCountdown();
     }
   }
 }
 
-// ==================== 更新 ====================
+// ==================== 碰撞（球 vs 磚塊） ====================
+function collisionDetection() {
+  for (const ball of balls) {
+    for (let r = 0; r < brickSetting.rows; r++) {
+      for (let c = 0; c < brickSetting.cols; c++) {
+        const brick = bricks[r][c];
+
+        if (brick.status === 1) {
+          if (
+            ball.x + ball.radius > brick.x &&
+            ball.x - ball.radius < brick.x + brickSetting.width &&
+            ball.y + ball.radius > brick.y &&
+            ball.y - ball.radius < brick.y + brickSetting.height
+          ) {
+            ball.dy *= -1;
+            normalizeBallSpeed(ball);
+
+            brick.status = 0;
+            score++;
+
+            spawnPowerUp(
+              brick.x + brickSetting.width / 2,
+              brick.y + brickSetting.height / 2
+            );
+
+            if (isLevelCleared()) {
+              nextLevel();
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 function update() {
   updatePaddle();
   updateBalls();
@@ -434,41 +497,15 @@ function update() {
   collisionDetection();
 }
 
-// ==================== Reset ====================
-function resetBalls() {
-  balls = [];
-
-  // speed 改成 3.0（並隨關卡增加）
-  const baseSpeed = 3.0;
-  const speed = baseSpeed + (level - 1) * 0.3;
-
-  balls.push(
-    createBall(canvas.width / 2, canvas.height - 60, 3, -3, speed)
-  );
-}
-
+// ==================== 重開 ====================
 function restartGame() {
   score = 0;
   lives = 3;
   level = 1;
   gameRunning = true;
 
-  paddle.width = 120;
-  paddle.x = canvas.width / 2 - paddle.width / 2;
-  paddle.speed = 0;
-
   setupLevel(level);
-}
-
-// ==================== 下一關 ====================
-function nextLevel() {
-  if (level >= MAX_LEVEL) {
-    gameRunning = false;
-    return;
-  }
-
-  level++;
-  setupLevel(level);
+  startCountdown();
 }
 
 // ==================== 主迴圈 ====================
@@ -482,12 +519,15 @@ function gameLoop() {
   drawText();
 
   if (gameRunning) {
-    update();
+    if (countdownActive) {
+      updateCountdown();
+      drawCountdown();
+    } else {
+      update();
+    }
   } else {
     if (lives <= 0) {
       drawGameOver();
-    } else if (level >= MAX_LEVEL) {
-      drawWin();
     } else {
       drawWin();
     }
@@ -496,4 +536,7 @@ function gameLoop() {
   requestAnimationFrame(gameLoop);
 }
 
+// ==================== 初始化 ====================
+setupLevel(level);
+startCountdown();
 gameLoop();
