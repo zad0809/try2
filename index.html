@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>打磚塊遊戲 - Canvas</title>
+  <title>打磚塊遊戲</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,6 +11,12 @@
   <h1>打磚塊遊戲 (Breakout)</h1>
 
   <canvas id="gameCanvas" width="800" height="500"></canvas>
+
+  <div id="audioUI">
+  <label for="volumeSlider">Volume</label>
+  <input type="range" id="volumeSlider" min="0" max="100" value="50">
+  <span id="volumeValue">50</span>
+</div>
 
   <p class="info">左右方向鍵控制</p>
 
