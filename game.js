@@ -461,28 +461,62 @@ function collisionDetection() {
     for (let r = 0; r < brickSetting.rows; r++) {
       for (let c = 0; c < brickSetting.cols; c++) {
         const brick = bricks[r][c];
+        if (brick.status !== 1) continue;
 
-        if (brick.status === 1) {
-          if (
+        // AABB 碰撞（球邊緣 vs 磚塊）
+        const hit =
+          ball.x + ball.radius > brick.x &&
+          ball.x - ball.radius < brick.x + brickSetting.width &&
+          ball.y + ball.radius > brick.y &&
+          ball.y - ball.radius < brick.y + brickSetting.height;
+
+        if (hit) {
+          // 計算球上一幀位置
+          const prevX = ball.x - ball.dx;
+          const prevY = ball.y - ball.dy;
+
+          // 判斷撞擊方向
+          const fromLeft = prevX + ball.radius <= brick.x;
+          const fromRight = prevX - ball.radius >= brick.x + brickSetting.width;
+          const fromTop = prevY + ball.radius <= brick.y;
+          const fromBottom = prevY - ball.radius >= brick.y + brickSetting.height;
+
+          // 根據撞擊方向反彈
+          if (fromLeft || fromRight) {
+            ball.dx *= -1;
+          } else if (fromTop || fromBottom) {
+            ball.dy *= -1;
+          } else {
+            // 如果無法判斷（卡角落），就反彈 y
+            ball.dy *= -1;
+          }
+
+          normalizeBallSpeed(ball);
+
+          // ⭐ 把球推出磚塊外，避免卡住
+          while (
             ball.x + ball.radius > brick.x &&
             ball.x - ball.radius < brick.x + brickSetting.width &&
             ball.y + ball.radius > brick.y &&
             ball.y - ball.radius < brick.y + brickSetting.height
           ) {
-            ball.dy *= -1;
-            normalizeBallSpeed(ball);
+            ball.x += ball.dx * 0.1;
+            ball.y += ball.dy * 0.1;
+          }
 
-            brick.status = 0;
-            score++;
+          // 磚塊消失
+          brick.status = 0;
+          score++;
 
-            spawnPowerUp(
-              brick.x + brickSetting.width / 2,
-              brick.y + brickSetting.height / 2
-            );
+          // 掉落道具
+          spawnPowerUp(
+            brick.x + brickSetting.width / 2,
+            brick.y + brickSetting.height / 2
+          );
 
-            if (isLevelCleared()) {
-              nextLevel();
-            }
+          // 過關判斷
+          if (isLevelCleared()) {
+            nextLevel();
           }
         }
       }
