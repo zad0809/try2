@@ -60,7 +60,7 @@ function createBall(x, y, dx, dy, speed) {
 function resetBalls() {
   balls = [];
 
-  const baseSpeed = 3.0;
+  const baseSpeed = 6.0;
   const speed = baseSpeed + (level - 1) * 0.3;
 
   balls.push({
