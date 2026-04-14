@@ -10,12 +10,14 @@ const MAX_LEVEL = 5;
 let score = 0;
 let lives = 3;
 
-// 倒數系統
+// 過關倒數
 let countdownActive = false;
 let countdownValue = 0;
 let countdownStartTime = 0;
 
+// 發球等待狀態
 let waitingForServe = false;
+
 // ==================== Paddle ====================
 const paddle = {
   width: 120,
@@ -24,15 +26,15 @@ const paddle = {
   y: canvas.height - 40,
 
   speed: 0,
-  maxSpeed: 20,    // 加快
-  accel: 2.0,      // 加速更快
-  friction: 0.90   // 比較滑順
+  maxSpeed: 20,
+  accel: 2.0,
+  friction: 0.90
 };
 
 let leftPressed = false;
 let rightPressed = false;
 
-// ==================== Ball（多顆球支援） ====================
+// ==================== Ball（多顆球） ====================
 let balls = [];
 
 function normalizeBallSpeed(ball) {
@@ -43,52 +45,40 @@ function normalizeBallSpeed(ball) {
   ball.dy = (ball.dy / mag) * ball.speed;
 }
 
-function createBall(x, y, dx, dy, speed) {
+function createBall(x, y, dx, dy, speed, attached = false) {
   const ball = {
     x,
     y,
     radius: 10,
     dx,
     dy,
-    speed
+    speed,
+    attached
   };
 
-  normalizeBallSpeed(ball);
+  if (!attached) normalizeBallSpeed(ball);
   return ball;
 }
 
 function resetBalls() {
   balls = [];
 
-  const baseSpeed = 6.0;
+  const baseSpeed = 5.0;
   const speed = baseSpeed + (level - 1) * 0.3;
 
-  balls.push({
-    x: paddle.x + paddle.width / 2,
-    y: paddle.y - 10,
-    radius: 10,
-    dx: 0,
-    dy: 0,
-    speed: speed,
-    attached: true // ⭐ 新增狀態
-  });
+  balls.push(
+    createBall(
+      paddle.x + paddle.width / 2,
+      paddle.y - 10,
+      0,
+      0,
+      speed,
+      true
+    )
+  );
 
   waitingForServe = true;
 }
-
-document.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && waitingForServe) {
-    for (const ball of balls) {
-      if (ball.attached) {
-        ball.dx = 3;
-        ball.dy = -3;
-        normalizeBallSpeed(ball);
-        ball.attached = false;
-      }
-    }
-    waitingForServe = false;
-  }
-});
 
 // ==================== Bricks ====================
 const brickSetting = {
@@ -165,10 +155,17 @@ function applyPowerUp(type) {
     const newBalls = [];
 
     for (const ball of balls) {
-      newBalls.push(createBall(ball.x, ball.y, -ball.dx, ball.dy, ball.speed));
+      // ⭐ attached 的球不複製（避免死機）
+      if (ball.attached) continue;
+
+      newBalls.push(
+        createBall(ball.x, ball.y, -ball.dx, ball.dy, ball.speed, false)
+      );
     }
 
-    balls = balls.concat(newBalls);
+    if (newBalls.length > 0) {
+      balls = balls.concat(newBalls);
+    }
   }
 
   if (type === POWER_TYPES.EXPAND) {
@@ -239,10 +236,8 @@ function nextLevel() {
   level++;
   setupLevel(level);
 
-  // ⭐ 過關一定暫停 3 秒
-  countdownActive = true;
-  countdownValue = 3;
-  countdownStartTime = Date.now();
+  // ⭐ 過關才倒數 3 秒
+  startCountdown();
 }
 
 // ==================== 倒數系統 ====================
@@ -295,6 +290,19 @@ function drawCountdown() {
 document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") leftPressed = true;
   if (e.key === "ArrowRight") rightPressed = true;
+
+  // ⭐ 空白鍵發球
+  if (e.code === "Space" && waitingForServe && !countdownActive) {
+    for (const ball of balls) {
+      if (ball.attached) {
+        ball.dx = 3;
+        ball.dy = -3;
+        ball.attached = false;
+        normalizeBallSpeed(ball);
+      }
+    }
+    waitingForServe = false;
+  }
 
   if (e.key === "Enter" && !gameRunning) {
     restartGame();
@@ -382,6 +390,16 @@ function drawText() {
   ctx.fillText("Score: " + score, 20, 30);
   ctx.fillText("Lives: " + lives, canvas.width - 100, 30);
   ctx.fillText("Level: " + level, canvas.width / 2 - 30, 30);
+
+  if (waitingForServe && !countdownActive) {
+    ctx.font = "20px Arial";
+    ctx.fillStyle = "#facc15";
+    ctx.fillText(
+      "Press SPACE to Serve",
+      canvas.width / 2 - 110,
+      canvas.height - 10
+    );
+  }
 }
 
 function drawGameOver() {
@@ -437,22 +455,33 @@ function updatePaddle() {
 
 function updateBalls() {
   for (const ball of balls) {
-  if (ball.attached) {
-    ball.x = paddle.x + paddle.width / 2;
-    ball.y = paddle.y - 10;
-    continue;
-  }
+    // 發球前跟著 paddle
+    if (ball.attached) {
+      ball.x = paddle.x + paddle.width / 2;
+      ball.y = paddle.y - 10;
+      continue;
+    }
+
     ball.x += ball.dx;
     ball.y += ball.dy;
 
-    // 撞左右牆
-    if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
+    // ⭐ 撞右牆（修正抖動）
+    if (ball.x + ball.radius > canvas.width) {
+      ball.x = canvas.width - ball.radius;
       ball.dx *= -1;
       normalizeBallSpeed(ball);
     }
 
-    // 撞上牆
+    // ⭐ 撞左牆（修正抖動）
+    if (ball.x - ball.radius < 0) {
+      ball.x = ball.radius;
+      ball.dx *= -1;
+      normalizeBallSpeed(ball);
+    }
+
+    // ⭐ 撞上牆（修正抖動）
     if (ball.y - ball.radius < 0) {
+      ball.y = ball.radius;
       ball.dy *= -1;
       normalizeBallSpeed(ball);
     }
@@ -464,6 +493,7 @@ function updateBalls() {
       ball.y + ball.radius > paddle.y &&
       ball.y - ball.radius < paddle.y + paddle.height
     ) {
+      ball.y = paddle.y - ball.radius; // ⭐ 推回 paddle 上面避免卡住
       ball.dy = -Math.abs(ball.dy);
 
       const hitPos = (ball.x - paddle.x) / paddle.width - 0.5;
@@ -478,19 +508,21 @@ function updateBalls() {
 
   // 全部球掉了才扣命
   if (balls.length === 0) {
-  lives--;
+    lives--;
 
-  if (lives <= 0) {
-    gameRunning = false;
-  } else {
-    resetBalls(); // 進入 waitingForServe
+    if (lives <= 0) {
+      gameRunning = false;
+    } else {
+      resetBalls(); // ⭐ 等待空白鍵發球
+    }
   }
-}
 }
 
 // ==================== 碰撞（球 vs 磚塊） ====================
 function collisionDetection() {
   for (const ball of balls) {
+    if (ball.attached) continue;
+
     for (let r = 0; r < brickSetting.rows; r++) {
       for (let c = 0; c < brickSetting.cols; c++) {
         const brick = bricks[r][c];
@@ -505,14 +537,13 @@ function collisionDetection() {
         if (!hit) continue;
 
         // ===============================
-        // ⭐ 計算「穿透距離」
+        // ⭐ MTV 穿透距離判斷（穩定反彈）
         // ===============================
         const overlapLeft = (ball.x + ball.radius) - brick.x;
         const overlapRight = (brick.x + brickSetting.width) - (ball.x - ball.radius);
         const overlapTop = (ball.y + ball.radius) - brick.y;
         const overlapBottom = (brick.y + brickSetting.height) - (ball.y - ball.radius);
 
-        // 找最小穿透方向
         const minOverlap = Math.min(
           overlapLeft,
           overlapRight,
@@ -520,28 +551,22 @@ function collisionDetection() {
           overlapBottom
         );
 
-        // ===============================
-        // ⭐ 根據最小穿透決定反彈方向
-        // ===============================
-        if (minOverlap === overlapLeft || minOverlap === overlapRight) {
+        if (minOverlap === overlapLeft) {
+          ball.x -= overlapLeft;
           ball.dx *= -1;
+        } else if (minOverlap === overlapRight) {
+          ball.x += overlapRight;
+          ball.dx *= -1;
+        } else if (minOverlap === overlapTop) {
+          ball.y -= overlapTop;
+          ball.dy *= -1;
         } else {
+          ball.y += overlapBottom;
           ball.dy *= -1;
         }
 
         normalizeBallSpeed(ball);
 
-        // ===============================
-        // ⭐ 強制把球推出磚塊（超重要）
-        // ===============================
-        if (minOverlap === overlapLeft) ball.x -= overlapLeft;
-        else if (minOverlap === overlapRight) ball.x += overlapRight;
-        else if (minOverlap === overlapTop) ball.y -= overlapTop;
-        else if (minOverlap === overlapBottom) ball.y += overlapBottom;
-
-        // ===============================
-        // 磚塊消失 + 道具
-        // ===============================
         brick.status = 0;
         score++;
 
@@ -587,6 +612,7 @@ function gameLoop() {
   drawText();
 
   if (gameRunning) {
+    // ⭐ 過關才倒數
     if (countdownActive) {
       updateCountdown();
       drawCountdown();
