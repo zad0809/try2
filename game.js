@@ -466,7 +466,7 @@ function drawText() {
     ctx.font = "20px Arial";
     ctx.fillStyle = "#facc15";
     ctx.fillText(
-      "Press P to Serve",
+      "Press Space to Serve",
       canvas.width / 2 - 110,
       canvas.height - 10
     );
