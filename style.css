@@ -21,3 +21,14 @@ canvas {
   margin-top: 10px;
   color: #cbd5e1;
 }
+
+#audioUI {
+  margin-top: 10px;
+  text-align: center;
+  color: white;
+  font-family: Arial;
+}
+
+#volumeSlider {
+  width: 200px;
+}
