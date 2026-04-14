@@ -3,6 +3,8 @@ const ctx = canvas.getContext("2d");
 
 // ==================== 遊戲狀態 ====================
 let gameRunning = true;
+let level = 1;
+const MAX_LEVEL = 5;
 
 // ==================== Paddle ====================
 const paddle = {
@@ -11,9 +13,9 @@ const paddle = {
   x: canvas.width / 2 - 60,
   y: canvas.height - 40,
   speed: 0,
-  maxSpeed: 10,
-  accel: 1.5,
-  friction: 0.85
+  maxSpeed: 20,
+  accel: 2,
+  friction: 0.8
 };
 
 let leftPressed = false;
@@ -22,18 +24,27 @@ let rightPressed = false;
 // ==================== Ball（支援多顆球） ====================
 let balls = [];
 
-function createBall(x, y, dx, dy) {
-  return {
+function normalizeBallSpeed(ball) {
+  const mag = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+  if (mag === 0) return;
+
+  ball.dx = (ball.dx / mag) * ball.speed;
+  ball.dy = (ball.dy / mag) * ball.speed;
+}
+
+function createBall(x, y, dx, dy, speed) {
+  const ball = {
     x,
     y,
     radius: 10,
     dx,
-    dy
+    dy,
+    speed
   };
-}
 
-// 初始球
-balls.push(createBall(canvas.width / 2, canvas.height - 60, 4, -4));
+  normalizeBallSpeed(ball);
+  return ball;
+}
 
 // ==================== Bricks ====================
 const brickSetting = {
@@ -43,7 +54,7 @@ const brickSetting = {
   height: 20,
   padding: 10,
   offsetTop: 60,
-  offsetLeft: 0 // 之後自動算
+  offsetLeft: 0
 };
 
 let bricks = [];
@@ -59,7 +70,6 @@ const POWER_TYPES = {
   LIFE: "LIFE"
 };
 
-// 掉落機率 (0~1)
 const POWER_DROP_RATE = 0.25;
 
 function createPowerUp(x, y, type) {
@@ -95,7 +105,19 @@ function createBricks() {
   }
 }
 
-createBricks();
+// ==================== 關卡設定 ====================
+function setupLevel(lv) {
+  // 每關磚塊增加
+  brickSetting.rows = 4 + lv; // lv1=5排, lv2=6排...
+  if (brickSetting.rows > 10) brickSetting.rows = 10;
+
+  createBricks();
+  resetBalls();
+  powerUps = [];
+}
+
+// ==================== 初始化遊戲 ====================
+setupLevel(level);
 
 // ==================== 畫面繪製 ====================
 function drawPaddle() {
@@ -145,7 +167,7 @@ function drawText() {
   ctx.fillStyle = "white";
   ctx.fillText("Score: " + score, 20, 30);
   ctx.fillText("Lives: " + lives, canvas.width - 100, 30);
-  ctx.fillText("Balls: " + balls.length, canvas.width / 2 - 30, 30);
+  ctx.fillText("Level: " + level, canvas.width / 2 - 30, 30);
 }
 
 function drawGameOver() {
@@ -176,6 +198,24 @@ function drawWin() {
   );
 }
 
+function drawNextLevel() {
+  ctx.font = "40px Arial";
+  ctx.fillStyle = "#38bdf8";
+  ctx.fillText(
+    "LEVEL " + level,
+    canvas.width / 2 - 90,
+    canvas.height / 2
+  );
+
+  ctx.font = "20px Arial";
+  ctx.fillStyle = "white";
+  ctx.fillText(
+    "Get Ready...",
+    canvas.width / 2 - 60,
+    canvas.height / 2 + 40
+  );
+}
+
 // ==================== 畫道具 ====================
 function drawPowerUps() {
   for (const p of powerUps) {
@@ -184,14 +224,13 @@ function drawPowerUps() {
     ctx.beginPath();
     ctx.rect(p.x, p.y, p.width, p.height);
 
-    if (p.type === POWER_TYPES.MULTIBALL) ctx.fillStyle = "#f97316"; // 橘色
-    if (p.type === POWER_TYPES.EXPAND) ctx.fillStyle = "#a855f7"; // 紫色
-    if (p.type === POWER_TYPES.LIFE) ctx.fillStyle = "#ef4444"; // 紅色
+    if (p.type === POWER_TYPES.MULTIBALL) ctx.fillStyle = "#f97316";
+    if (p.type === POWER_TYPES.EXPAND) ctx.fillStyle = "#a855f7";
+    if (p.type === POWER_TYPES.LIFE) ctx.fillStyle = "#ef4444";
 
     ctx.fill();
     ctx.closePath();
 
-    // 字
     ctx.font = "14px Arial";
     ctx.fillStyle = "white";
 
@@ -219,7 +258,7 @@ document.addEventListener("keyup", (e) => {
   if (e.key === "ArrowRight") rightPressed = false;
 });
 
-// ==================== 磚塊擊破掉落道具 ====================
+// ==================== 道具掉落 ====================
 function spawnPowerUp(x, y) {
   if (Math.random() > POWER_DROP_RATE) return;
 
@@ -230,22 +269,18 @@ function spawnPowerUp(x, y) {
   ];
 
   const randomType = types[Math.floor(Math.random() * types.length)];
-
   powerUps.push(createPowerUp(x, y, randomType));
 }
 
 // ==================== 道具效果 ====================
 function applyPowerUp(type) {
   if (type === POWER_TYPES.MULTIBALL) {
-    // 每顆球都再生成一顆（反方向）
     const newBalls = [];
-
     for (const ball of balls) {
       newBalls.push(
-        createBall(ball.x, ball.y, -ball.dx, ball.dy)
+        createBall(ball.x, ball.y, -ball.dx, ball.dy, ball.speed)
       );
     }
-
     balls = balls.concat(newBalls);
   }
 
@@ -259,7 +294,7 @@ function applyPowerUp(type) {
   }
 }
 
-// ==================== 碰撞偵測（球 vs 磚塊） ====================
+// ==================== 碰撞偵測 ====================
 function collisionDetection() {
   for (const ball of balls) {
     for (let r = 0; r < brickSetting.rows; r++) {
@@ -274,17 +309,22 @@ function collisionDetection() {
             ball.y < brick.y + brickSetting.height
           ) {
             ball.dy *= -1;
+            normalizeBallSpeed(ball);
+
             brick.status = 0;
             score++;
 
-            // 生成道具（掉落點在磚塊中央）
             spawnPowerUp(
               brick.x + brickSetting.width / 2,
               brick.y + brickSetting.height / 2
             );
 
-            if (score === brickSetting.rows * brickSetting.cols) {
-              gameRunning = false;
+            const totalBricks = brickSetting.rows * brickSetting.cols;
+            const bricksDestroyed = score % totalBricks;
+
+            // 如果這關清完
+            if (bricksDestroyed === 0) {
+              nextLevel();
             }
           }
         }
@@ -300,7 +340,6 @@ function updatePowerUps() {
 
     p.y += p.speed;
 
-    // 撞到 paddle
     if (
       p.x < paddle.x + paddle.width &&
       p.x + p.width > paddle.x &&
@@ -311,31 +350,26 @@ function updatePowerUps() {
       applyPowerUp(p.type);
     }
 
-    // 掉出畫面
     if (p.y > canvas.height) {
       p.active = false;
     }
   }
 
-  // 清掉失效道具
   powerUps = powerUps.filter(p => p.active);
 }
 
-// ==================== 更新遊戲 ====================
+// ==================== Paddle 更新 ====================
 function updatePaddle() {
   if (leftPressed) paddle.speed -= paddle.accel;
   if (rightPressed) paddle.speed += paddle.accel;
 
-  // 摩擦力
   paddle.speed *= paddle.friction;
 
-  // 限制最大速度
   if (paddle.speed > paddle.maxSpeed) paddle.speed = paddle.maxSpeed;
   if (paddle.speed < -paddle.maxSpeed) paddle.speed = -paddle.maxSpeed;
 
   paddle.x += paddle.speed;
 
-  // 邊界限制
   if (paddle.x < 0) {
     paddle.x = 0;
     paddle.speed = 0;
@@ -347,22 +381,23 @@ function updatePaddle() {
   }
 }
 
+// ==================== Ball 更新 ====================
 function updateBalls() {
   for (const ball of balls) {
     ball.x += ball.dx;
     ball.y += ball.dy;
 
-    // 撞左右牆
     if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
       ball.dx *= -1;
+      normalizeBallSpeed(ball);
     }
 
-    // 撞上牆
     if (ball.y - ball.radius < 0) {
       ball.dy *= -1;
+      normalizeBallSpeed(ball);
     }
 
-    // 撞 paddle
+    // paddle碰撞
     if (
       ball.x > paddle.x &&
       ball.x < paddle.x + paddle.width &&
@@ -371,16 +406,15 @@ function updateBalls() {
     ) {
       ball.dy = -Math.abs(ball.dy);
 
-      // 根據撞擊位置改變 dx
       const hitPos = (ball.x - paddle.x) / paddle.width - 0.5;
       ball.dx = hitPos * 10;
+
+      normalizeBallSpeed(ball);
     }
   }
 
-  // 移除掉出底部的球
   balls = balls.filter(ball => ball.y - ball.radius <= canvas.height);
 
-  // 如果所有球都掉了 => 扣命
   if (balls.length === 0) {
     lives--;
 
@@ -392,6 +426,7 @@ function updateBalls() {
   }
 }
 
+// ==================== 更新 ====================
 function update() {
   updatePaddle();
   updateBalls();
@@ -402,22 +437,38 @@ function update() {
 // ==================== Reset ====================
 function resetBalls() {
   balls = [];
-  balls.push(createBall(canvas.width / 2, canvas.height - 60, 4, -4));
+
+  // speed 改成 3.0（並隨關卡增加）
+  const baseSpeed = 3.0;
+  const speed = baseSpeed + (level - 1) * 0.3;
+
+  balls.push(
+    createBall(canvas.width / 2, canvas.height - 60, 3, -3, speed)
+  );
 }
 
 function restartGame() {
   score = 0;
   lives = 3;
+  level = 1;
   gameRunning = true;
 
   paddle.width = 120;
   paddle.x = canvas.width / 2 - paddle.width / 2;
   paddle.speed = 0;
 
-  resetBalls();
-  createBricks();
+  setupLevel(level);
+}
 
-  powerUps = [];
+// ==================== 下一關 ====================
+function nextLevel() {
+  if (level >= MAX_LEVEL) {
+    gameRunning = false;
+    return;
+  }
+
+  level++;
+  setupLevel(level);
 }
 
 // ==================== 主迴圈 ====================
@@ -435,6 +486,8 @@ function gameLoop() {
   } else {
     if (lives <= 0) {
       drawGameOver();
+    } else if (level >= MAX_LEVEL) {
+      drawWin();
     } else {
       drawWin();
     }
