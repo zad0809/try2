@@ -12,7 +12,7 @@ const paddle = {
   y: canvas.height - 40,
   speed: 0,
   maxSpeed: 10,
-  accel: 0.7,
+  accel: 1.5,
   friction: 0.85
 };
 
