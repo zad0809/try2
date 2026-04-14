@@ -1,6 +1,48 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
+// ==================== 音效 ====================
+const sounds = {
+  bgm: new Audio("sounds/bgm.mp3"),
+  hitPaddle: new Audio("sounds/hit_paddle.wav"),
+  hitBrick: new Audio("sounds/hit_brick.wav"),
+  powerUp: new Audio("sounds/powerup.wav"),
+  loseLife: new Audio("sounds/lose_life.wav"),
+  win: new Audio("sounds/win.wav"),
+  gameOver: new Audio("sounds/gameover.wav"),
+};
+
+// BGM 設定
+sounds.bgm.loop = true;
+sounds.bgm.volume = 0.35;
+
+// 音效音量
+sounds.hitPaddle.volume = 0.7;
+sounds.hitBrick.volume = 0.7;
+sounds.powerUp.volume = 0.8;
+sounds.loseLife.volume = 0.8;
+sounds.win.volume = 1.0;
+sounds.gameOver.volume = 1.0;
+
+// 防止音效播放卡住（重播）
+function playSound(sound) {
+  if (!sound) return;
+  sound.currentTime = 0;
+  sound.play().catch(() => {});
+}
+
+// BGM 必須玩家互動後才能播放
+let bgmStarted = false;
+function startBGM() {
+  if (!bgmStarted) {
+    bgmStarted = true;
+    sounds.bgm.play().catch(() => {});
+  }
+}
+
+// 避免 win/gameover 每幀一直播
+let endSoundPlayed = false;
+
 // ==================== 遊戲狀態 ====================
 let gameRunning = true;
 
@@ -146,16 +188,16 @@ function spawnPowerUp(x, y) {
   ];
 
   const randomType = types[Math.floor(Math.random() * types.length)];
-
   powerUps.push(createPowerUp(x, y, randomType));
 }
 
 function applyPowerUp(type) {
+  playSound(sounds.powerUp);
+
   if (type === POWER_TYPES.MULTIBALL) {
     const newBalls = [];
 
     for (const ball of balls) {
-      // ⭐ attached 的球不複製（避免死機）
       if (ball.attached) continue;
 
       newBalls.push(
@@ -184,7 +226,6 @@ function updatePowerUps() {
 
     p.y += p.speed;
 
-    // 撞到 paddle
     if (
       p.x < paddle.x + paddle.width &&
       p.x + p.width > paddle.x &&
@@ -195,7 +236,6 @@ function updatePowerUps() {
       applyPowerUp(p.type);
     }
 
-    // 掉出畫面
     if (p.y > canvas.height) {
       p.active = false;
     }
@@ -293,6 +333,8 @@ document.addEventListener("keydown", (e) => {
 
   // ⭐ 空白鍵發球
   if (e.code === "Space" && waitingForServe && !countdownActive) {
+    startBGM();
+
     for (const ball of balls) {
       if (ball.attached) {
         ball.dx = 3;
@@ -301,6 +343,7 @@ document.addEventListener("keydown", (e) => {
         normalizeBallSpeed(ball);
       }
     }
+
     waitingForServe = false;
   }
 
@@ -455,7 +498,6 @@ function updatePaddle() {
 
 function updateBalls() {
   for (const ball of balls) {
-    // 發球前跟著 paddle
     if (ball.attached) {
       ball.x = paddle.x + paddle.width / 2;
       ball.y = paddle.y - 10;
@@ -465,21 +507,21 @@ function updateBalls() {
     ball.x += ball.dx;
     ball.y += ball.dy;
 
-    // ⭐ 撞右牆（修正抖動）
+    // 撞右牆（修正抖動）
     if (ball.x + ball.radius > canvas.width) {
       ball.x = canvas.width - ball.radius;
       ball.dx *= -1;
       normalizeBallSpeed(ball);
     }
 
-    // ⭐ 撞左牆（修正抖動）
+    // 撞左牆（修正抖動）
     if (ball.x - ball.radius < 0) {
       ball.x = ball.radius;
       ball.dx *= -1;
       normalizeBallSpeed(ball);
     }
 
-    // ⭐ 撞上牆（修正抖動）
+    // 撞上牆（修正抖動）
     if (ball.y - ball.radius < 0) {
       ball.y = ball.radius;
       ball.dy *= -1;
@@ -493,13 +535,15 @@ function updateBalls() {
       ball.y + ball.radius > paddle.y &&
       ball.y - ball.radius < paddle.y + paddle.height
     ) {
-      ball.y = paddle.y - ball.radius; // ⭐ 推回 paddle 上面避免卡住
+      ball.y = paddle.y - ball.radius;
       ball.dy = -Math.abs(ball.dy);
 
       const hitPos = (ball.x - paddle.x) / paddle.width - 0.5;
       ball.dx = hitPos * 10;
 
       normalizeBallSpeed(ball);
+
+      playSound(sounds.hitPaddle);
     }
   }
 
@@ -509,11 +553,12 @@ function updateBalls() {
   // 全部球掉了才扣命
   if (balls.length === 0) {
     lives--;
+    playSound(sounds.loseLife);
 
     if (lives <= 0) {
       gameRunning = false;
     } else {
-      resetBalls(); // ⭐ 等待空白鍵發球
+      resetBalls();
     }
   }
 }
@@ -536,9 +581,7 @@ function collisionDetection() {
 
         if (!hit) continue;
 
-        // ===============================
-        // ⭐ MTV 穿透距離判斷（穩定反彈）
-        // ===============================
+        // MTV 穿透距離判斷（穩定反彈）
         const overlapLeft = (ball.x + ball.radius) - brick.x;
         const overlapRight = (brick.x + brickSetting.width) - (ball.x - ball.radius);
         const overlapTop = (ball.y + ball.radius) - brick.y;
@@ -570,6 +613,8 @@ function collisionDetection() {
         brick.status = 0;
         score++;
 
+        playSound(sounds.hitBrick);
+
         spawnPowerUp(
           brick.x + brickSetting.width / 2,
           brick.y + brickSetting.height / 2
@@ -596,6 +641,7 @@ function restartGame() {
   lives = 3;
   level = 1;
   gameRunning = true;
+  endSoundPlayed = false;
 
   setupLevel(level);
   startCountdown();
@@ -612,7 +658,6 @@ function gameLoop() {
   drawText();
 
   if (gameRunning) {
-    // ⭐ 過關才倒數
     if (countdownActive) {
       updateCountdown();
       drawCountdown();
@@ -620,11 +665,15 @@ function gameLoop() {
       update();
     }
   } else {
-    if (lives <= 0) {
-      drawGameOver();
-    } else {
-      drawWin();
+    if (!endSoundPlayed) {
+      endSoundPlayed = true;
+
+      if (lives <= 0) playSound(sounds.gameOver);
+      else playSound(sounds.win);
     }
+
+    if (lives <= 0) drawGameOver();
+    else drawWin();
   }
 
   requestAnimationFrame(gameLoop);
