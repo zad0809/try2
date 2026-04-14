@@ -23,8 +23,8 @@ const paddle = {
   y: canvas.height - 40,
 
   speed: 0,
-  maxSpeed: 16,    // 加快
-  accel: 1.2,      // 加速更快
+  maxSpeed: 20,    // 加快
+  accel: 2.0,      // 加速更快
   friction: 0.90   // 比較滑順
 };
 
@@ -59,7 +59,7 @@ function createBall(x, y, dx, dy, speed) {
 function resetBalls() {
   balls = [];
 
-  const baseSpeed = 3.0;
+  const baseSpeed = 5.0;
   const speed = baseSpeed + (level - 1) * 0.3;
 
   balls.push(createBall(canvas.width / 2, canvas.height - 60, 3, -3, speed));
