@@ -15,6 +15,7 @@ let countdownActive = false;
 let countdownValue = 0;
 let countdownStartTime = 0;
 
+let waitingForServe = false;
 // ==================== Paddle ====================
 const paddle = {
   width: 120,
@@ -59,11 +60,35 @@ function createBall(x, y, dx, dy, speed) {
 function resetBalls() {
   balls = [];
 
-  const baseSpeed = 5.0;
+  const baseSpeed = 3.0;
   const speed = baseSpeed + (level - 1) * 0.3;
 
-  balls.push(createBall(canvas.width / 2, canvas.height - 60, 3, -3, speed));
+  balls.push({
+    x: paddle.x + paddle.width / 2,
+    y: paddle.y - 10,
+    radius: 10,
+    dx: 0,
+    dy: 0,
+    speed: speed,
+    attached: true // ⭐ 新增狀態
+  });
+
+  waitingForServe = true;
 }
+
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && waitingForServe) {
+    for (const ball of balls) {
+      if (ball.attached) {
+        ball.dx = 3;
+        ball.dy = -3;
+        normalizeBallSpeed(ball);
+        ball.attached = false;
+      }
+    }
+    waitingForServe = false;
+  }
+});
 
 // ==================== Bricks ====================
 const brickSetting = {
@@ -213,7 +238,11 @@ function nextLevel() {
 
   level++;
   setupLevel(level);
-  startCountdown();
+
+  // ⭐ 過關一定暫停 3 秒
+  countdownActive = true;
+  countdownValue = 3;
+  countdownStartTime = Date.now();
 }
 
 // ==================== 倒數系統 ====================
@@ -408,6 +437,11 @@ function updatePaddle() {
 
 function updateBalls() {
   for (const ball of balls) {
+  if (ball.attached) {
+    ball.x = paddle.x + paddle.width / 2;
+    ball.y = paddle.y - 10;
+    continue;
+  }
     ball.x += ball.dx;
     ball.y += ball.dy;
 
@@ -444,15 +478,14 @@ function updateBalls() {
 
   // 全部球掉了才扣命
   if (balls.length === 0) {
-    lives--;
+  lives--;
 
-    if (lives <= 0) {
-      gameRunning = false;
-    } else {
-      resetBalls();
-      startCountdown();
-    }
+  if (lives <= 0) {
+    gameRunning = false;
+  } else {
+    resetBalls(); // 進入 waitingForServe
   }
+}
 }
 
 // ==================== 碰撞（球 vs 磚塊） ====================
