@@ -40,6 +40,11 @@ function startBGM() {
   }
 }
 
+function stopBGM() {
+  sounds.bgm.pause();
+  sounds.bgm.currentTime = 0;
+  bgmStarted = false;
+}
 // 避免 win/gameover 每幀一直播
 let endSoundPlayed = false;
 
@@ -666,11 +671,13 @@ function gameLoop() {
     }
   } else {
     if (!endSoundPlayed) {
-      endSoundPlayed = true;
+  endSoundPlayed = true;
 
-      if (lives <= 0) playSound(sounds.gameOver);
-      else playSound(sounds.win);
-    }
+  stopBGM(); // ⭐ 結束時關掉背景音樂
+
+  if (lives <= 0) playSound(sounds.gameOver);
+  else playSound(sounds.win);
+}
 
     if (lives <= 0) drawGameOver();
     else drawWin();
