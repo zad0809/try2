@@ -12,17 +12,31 @@ const sounds = {
   gameOver: new Audio("sounds/gameover.wav"),
 };
 
-// BGM 設定
-sounds.bgm.loop = true;
-sounds.bgm.volume = 0.35;
+// ==================== 音量控制 ====================
+const volumeSlider = document.getElementById("volumeSlider");
+const volumeValue = document.getElementById("volumeValue");
 
-// 音效音量
-sounds.hitPaddle.volume = 0.7;
-sounds.hitBrick.volume = 0.7;
-sounds.powerUp.volume = 0.8;
-sounds.loseLife.volume = 0.8;
-sounds.win.volume = 1.0;
-sounds.gameOver.volume = 1.0;
+// 設定所有音效音量
+function setMasterVolume(v) {
+  sounds.bgm.volume = v * 0.35;        // bgm 比較小
+  sounds.hitPaddle.volume = v * 0.7;
+  sounds.hitBrick.volume = v * 0.7;
+  sounds.powerUp.volume = v * 0.8;
+  sounds.loseLife.volume = v * 0.8;
+  sounds.win.volume = v * 1.0;
+  sounds.gameOver.volume = v * 1.0;
+}
+
+// 初始音量
+setMasterVolume(0.5);
+
+volumeSlider.addEventListener("input", () => {
+  const v = volumeSlider.value / 100;
+  volumeValue.textContent = volumeSlider.value;
+  setMasterVolume(v);
+});
+
+
 
 // 防止音效播放卡住（重播）
 function playSound(sound) {
@@ -45,6 +59,15 @@ function stopBGM() {
   sounds.bgm.currentTime = 0;
   bgmStarted = false;
 }
+
+function stopEndSounds() {
+  sounds.win.pause();
+  sounds.win.currentTime = 0;
+
+  sounds.gameOver.pause();
+  sounds.gameOver.currentTime = 0;
+}
+
 // 避免 win/gameover 每幀一直播
 let endSoundPlayed = false;
 
@@ -650,6 +673,9 @@ function restartGame() {
 
   setupLevel(level);
   startCountdown();
+
+  stopEndSounds(); // ⭐ 新增
+  startBGM();      // ⭐ 新增
 }
 
 // ==================== 主迴圈 ====================
