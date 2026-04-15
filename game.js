@@ -98,7 +98,7 @@ const paddle = {
   speed: 0,
   maxSpeed: 20,
   accel: 2.0,
-  friction: 0.90
+  friction: 1.50
 };
 
 let leftPressed = false;
